@@ -20,6 +20,24 @@ use App\Http\Controllers\Api\HelperDictionaryController;
 
 Route::prefix('v1')->name('api.v1.')->group(function () {
     /**
+     * 发现你的天赋优势 - 测试类型 / MBTI / 订单
+     */
+    Route::get('test-types/list', [\App\Http\Controllers\Api\TestTypeController::class, 'list'])->name('test_types.list');
+    Route::get('test-types/detail', [\App\Http\Controllers\Api\TestTypeController::class, 'detail'])->name('test_types.detail');
+    Route::get('mbti/intro', [\App\Http\Controllers\Api\MbtiController::class, 'intro'])->name('mbti.intro');
+    Route::get('mbti/questions', [\App\Http\Controllers\Api\MbtiController::class, 'questions'])->name('mbti.questions');
+    Route::post('mbti/submit', [\App\Http\Controllers\Api\MbtiController::class, 'submit'])->name('mbti.submit');
+    Route::get('mbti/report', [\App\Http\Controllers\Api\MbtiController::class, 'report'])->name('mbti.report');
+    Route::post('order/create', [\App\Http\Controllers\Api\OrderController::class, 'create'])->name('order.create');
+    Route::get('order/status', [\App\Http\Controllers\Api\OrderController::class, 'status'])->name('order.status');
+
+    /**
+     * 支付回调（易支付异步通知，文档为 GET 请求，不校验登录）
+     */
+    Route::get('payment/epay/notify', [\App\Http\Controllers\Api\PaymentController::class, 'epayNotify'])->name('payment.epay.notify');
+    Route::get('payment/epay/placeholder', [\App\Http\Controllers\Api\PaymentController::class, 'epayPlaceholder'])->name('payment.epay.placeholder');
+
+    /**
      * 公共方法
      */
     Route::prefix('com')->group(function () {

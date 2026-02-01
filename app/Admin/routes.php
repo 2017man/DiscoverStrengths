@@ -82,4 +82,18 @@ Route::group([
     $router->get('ceping_count_brief/export_gb', 'CepingCountBriefController@exportGb')->name('ceping.exportGb');
     $router->resource('ceping_count_brief', 'CepingCountBriefController');// 支撑评估明细
 
+    /**
+     * 发现你的天赋优势 - 后台管理
+     */
+    $router->resource('strengths_test_types', 'StrengthsTestTypeController');           // 测试类型
+    $router->resource('strengths_test_scoring_rules', 'StrengthsTestScoringRuleController'); // 计分规则
+    $router->resource('strengths_test_questions_section', 'StrengthsTestQuestionsSectionController'); // 题目分组
+    $router->resource('strengths_test_questions', 'StrengthsTestQuestionController'); // 题目
+    $router->resource('strengths_test_question_options', 'StrengthsTestQuestionOptionController'); // 题目选项
+    $router->resource('strengths_test_dimensions', 'StrengthsTestDimensionController'); // 四个维度
+    $router->resource('strengths_test_dimension_sides', 'StrengthsTestDimensionSideController');   // 八个面
+    $router->resource('strengths_test_answer', 'StrengthsTestAnswerController');       // 测试答案(十六种性格)
+    $router->resource('strengths_test_results_records', 'StrengthsTestResultsRecordController'); // 用户测试记录
+    $router->resource('strengths_orders', 'StrengthsOrderController');                 // 订单
+
 });
