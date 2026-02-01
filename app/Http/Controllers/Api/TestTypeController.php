@@ -9,8 +9,8 @@ class TestTypeController extends Controller
 {
     public function __construct()
     {
-        parent::__construct();
         $this->isNeedLogin = false;
+        parent::__construct();
     }
 
     /**

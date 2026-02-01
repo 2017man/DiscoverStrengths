@@ -9,6 +9,9 @@
 return [
     'enabled' => env('EPAY_ENABLED', false),
 
+    // 测试阶段免支付：为 true 时创建订单后不调用易支付，直接视为已支付并返回报告页地址（仅用于测试环境）
+    'skip_payment_for_test' => env('PAYMENT_SKIP_FOR_TEST', false),
+
     // 商户 ID（文档 mchId）
     'mch_id' => env('EPAY_MCH_ID', ''),
 

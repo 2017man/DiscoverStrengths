@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\StrengthsTestQuestion;
 use App\Models\StrengthsTestQuestionOption;
+use App\Models\StrengthsTestQuestionsSection;
 use App\Models\StrengthsTestResultsRecord;
 use App\Models\StrengthsTestAnswer;
 use App\Models\StrengthsTestType;
@@ -15,8 +16,8 @@ class MbtiController extends Controller
 
     public function __construct()
     {
-        parent::__construct();
         $this->isNeedLogin = false;
+        parent::__construct();
     }
 
     /**
@@ -33,6 +34,7 @@ class MbtiController extends Controller
     /**
      * MBTI 题目列表（答题页）
      * GET /api/v1/mbti/questions
+     * 返回题目列表（含分组）及分组说明 sections，前端可按 section_code 分组展示、用 section_title 作引导语。
      */
     public function questions(Request $request)
     {
@@ -67,12 +69,33 @@ class MbtiController extends Controller
                 'id' => $q->id,
                 'question_number' => (int) $q->question_number,
                 'question_text' => $q->question_text,
+                'section_code' => $q->section_code ?? '',
                 'dimension' => $dimension,
                 'options' => $options,
             ];
         }
 
-        return $this->success($data);
+        $sections = StrengthsTestQuestionsSection::query()
+            ->where('test_type', self::TEST_TYPE)
+            ->orderBy('sort')
+            ->orderBy('id')
+            ->get(['section_code', 'section_title', 'sort'])
+            ->map(function ($s) {
+                return [
+                    'section_code' => $s->section_code,
+                    'section_title' => $s->section_title ?? '',
+                    'sort' => (int) $s->sort,
+                ];
+            })
+            ->values()
+            ->toArray();
+
+        return response()->json([
+            'code' => 200,
+            'msg' => 'success',
+            'data' => $data,
+            'sections' => $sections,
+        ], 200, [], JSON_UNESCAPED_UNICODE);
     }
 
     /**

@@ -12,8 +12,8 @@ class OrderController extends Controller
 {
     public function __construct()
     {
-        parent::__construct();
         $this->isNeedLogin = false;
+        parent::__construct();
     }
 
     /**
@@ -57,21 +57,33 @@ class OrderController extends Controller
         ]);
 
         $payUrl = '';
-        $epay = new EpayService();
-        if ($epay->isEnabled()) {
-            $goodsName = $record->test_type . ' 测试报告 - ' . $record->result_code;
-            $returnUrl = (string) config('epay.return_url');
-            if ($returnUrl === '' && (string) config('epay.return_url_base') !== '') {
-                $returnUrl = rtrim(config('epay.return_url_base'), '/') . '?result_id=' . $record->id;
+        $skipPaymentForTest = (bool) config('epay.skip_payment_for_test', false);
+
+        if ($skipPaymentForTest) {
+            // 测试阶段免支付：不调用易支付，直接标记订单与测试记录为已支付，返回报告页地址供前端跳转
+            $order->update(['status' => 'paid', 'paid_at' => now()]);
+            $record->update(['is_paid' => 1, 'paid_at' => now()]);
+            $returnUrlBase = (string) config('epay.return_url_base', '');
+            $payUrl = $returnUrlBase !== ''
+                ? rtrim($returnUrlBase, '/') . '?result_id=' . $record->id
+                : url('/api/v1/payment/epay/placeholder?out_trade_no=' . $outTradeNo . '&result_id=' . $record->id);
+        } else {
+            $epay = new EpayService();
+            if ($epay->isEnabled()) {
+                $goodsName = $record->test_type . ' 测试报告 - ' . $record->result_code;
+                $returnUrl = (string) config('epay.return_url');
+                if ($returnUrl === '' && (string) config('epay.return_url_base') !== '') {
+                    $returnUrl = rtrim(config('epay.return_url_base'), '/') . '?result_id=' . $record->id;
+                }
+                $param = (string) $record->id; // 回调会原样带回，便于对账
+                $result = $epay->createOrder($outTradeNo, $amount, $goodsName, $param, $returnUrl ?: null);
+                if ($result['success'] && $result['pay_url'] !== '') {
+                    $payUrl = $result['pay_url'];
+                }
             }
-            $param = (string) $record->id; // 回调会原样带回，便于对账
-            $result = $epay->createOrder($outTradeNo, $amount, $goodsName, $param, $returnUrl ?: null);
-            if ($result['success'] && $result['pay_url'] !== '') {
-                $payUrl = $result['pay_url'];
+            if ($payUrl === '') {
+                $payUrl = url('/api/v1/payment/epay/placeholder?out_trade_no=' . $outTradeNo);
             }
-        }
-        if ($payUrl === '') {
-            $payUrl = url('/api/v1/payment/epay/placeholder?out_trade_no=' . $outTradeNo);
         }
 
         $data = [
@@ -80,6 +92,9 @@ class OrderController extends Controller
             'pay_url' => $payUrl,
             'out_trade_no' => $outTradeNo,
         ];
+        if ($skipPaymentForTest) {
+            $data['skip_payment'] = true; // 前端可据此直接跳转报告页或提示「测试模式已免支付」
+        }
 
         return $this->success($data);
     }
