@@ -438,10 +438,13 @@ class MbtiController extends Controller
             ];
         }
 
-        $strengths = $this->parseTextToArray($answerRow->strengths ?? '');
-        $weaknesses = $this->parseTextToArray($answerRow->weaknesses ?? '');
+        $strengths = $this->parseTextToArray($answerRow->strengths ?? '', 'semicolon');
+        $weaknesses = $this->parseTextToArray($answerRow->weaknesses ?? '', 'semicolon');
         $typicalFigures = $answerRow->typical_figures ?? '';
         $typicalFiguresArr = $this->parseTextToArray($typicalFigures);
+
+        $traits = $this->formatParagraphText($answerRow->traits ?? '');
+        $careers = $this->formatParagraphText($answerRow->careers ?? '');
 
         $result = [
             'dimension_scores' => $dimensionScores,
@@ -449,13 +452,13 @@ class MbtiController extends Controller
             'dimensions' => $dimensions,
             'dimensions_detail' => $dimensionsDetail,
             'traits_summary' => $answerRow->traits_summary ?? '',
-            'traits' => $answerRow->traits ?? '',
+            'traits' => $traits ?: ($answerRow->traits ?? ''),
             'style_intro' => $answerRow->traits_summary ?? '',
             'typical_figures' => $typicalFiguresArr ?: $typicalFigures,
             'typical_characters' => $typicalFiguresArr ?: $typicalFigures,
             'strengths' => $strengths,
             'weaknesses' => $weaknesses,
-            'careers' => $answerRow->careers ?? '',
+            'careers' => $careers ?: ($answerRow->careers ?? ''),
             'overview' => $answerRow->summary ?? $answerRow->traits ?? '',
             'suggestion' => $answerRow->suggestion ?? '',
         ];
@@ -474,14 +477,36 @@ class MbtiController extends Controller
     }
 
     /**
-     * 将文本解析为数组（支持换行、顿号、逗号等分隔）
+     * 将文本解析为数组
+     * @param string|null $text 待解析文本
+     * @param string $mode semicolon=优势/劣势格式（按；分隔，项内可含、，）；default=典型人物等（按换行、顿号、逗号分隔）
      */
-    protected function parseTextToArray(?string $text): array
+    protected function parseTextToArray(?string $text, string $mode = 'default'): array
     {
         if (empty(trim((string) $text))) {
             return [];
         }
-        $items = preg_split('/[\n\r、,，;；]+/u', $text, -1, PREG_SPLIT_NO_EMPTY);
+        $text = trim((string) $text);
+        if ($mode === 'semicolon') {
+            // 优势/劣势格式：① xxx；② xxx；③ xxx —— 仅按分号分隔，保留项内的顿号、逗号
+            $items = preg_split('/[；;]\s*/u', $text, -1, PREG_SPLIT_NO_EMPTY);
+        } else {
+            // 典型人物等：张三、李四、王五 —— 按换行、顿号、逗号分隔
+            $items = preg_split('/[\n\r、,，]+/u', $text, -1, PREG_SPLIT_NO_EMPTY);
+        }
         return array_values(array_map('trim', array_filter($items)));
+    }
+
+    /**
+     * 将分号分隔的段落文本格式化为换行分隔的字符串（用于 traits、careers 等）
+     * 格式：段落1；段落2；段落3 → 段落1\n\n段落2\n\n段落3，便于 pre-wrap 显示
+     */
+    protected function formatParagraphText(?string $text): string
+    {
+        if (empty(trim((string) $text))) {
+            return '';
+        }
+        $paragraphs = $this->parseTextToArray($text, 'semicolon');
+        return implode("\n\n", $paragraphs);
     }
 }
