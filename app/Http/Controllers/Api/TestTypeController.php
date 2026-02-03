@@ -54,7 +54,10 @@ class TestTypeController extends Controller
             return $this->error('10002', '测试类型不存在或已禁用');
         }
 
-        $estimateMinutes = (int) ceil($item->total_questions / 6); // 约 6 题/分钟
+        $estimateMinutes = $item->estimate_minutes !== null ? (int) $item->estimate_minutes : null;
+        if ($estimateMinutes === null || $estimateMinutes < 1) {
+            $estimateMinutes = (int) ceil($item->total_questions / 6); // 约 6 题/分钟
+        }
         if ($estimateMinutes < 1) {
             $estimateMinutes = 15;
         }

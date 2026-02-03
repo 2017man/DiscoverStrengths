@@ -28,6 +28,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::get('mbti/questions', [\App\Http\Controllers\Api\MbtiController::class, 'questions'])->name('mbti.questions');
     Route::post('mbti/submit', [\App\Http\Controllers\Api\MbtiController::class, 'submit'])->name('mbti.submit');
     Route::get('mbti/report', [\App\Http\Controllers\Api\MbtiController::class, 'report'])->name('mbti.report');
+    Route::get('mbti/report/pdf', [\App\Http\Controllers\Api\MbtiController::class, 'reportPdf'])->name('mbti.report.pdf');
     Route::post('order/create', [\App\Http\Controllers\Api\OrderController::class, 'create'])->name('order.create');
     Route::get('order/status', [\App\Http\Controllers\Api\OrderController::class, 'status'])->name('order.status');
 
@@ -49,6 +50,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
      * 配置
      */
     Route::prefix('config')->group(function () {
+        Route::get('site', [\App\Http\Controllers\Api\ConfigController::class, 'site'])->name('config.site'); // 站点配置（首页 stats、二维码）
         Route::post('company', [\App\Http\Controllers\Api\CompanyConfigController::class, 'companyByArea'])->name('config.company'); // 基础信息
     });
     // 用户登录

@@ -9,7 +9,14 @@ class StrengthsTestResultsRecord extends Model
     protected $table = 'strengths_test_results_records';
 
     protected $fillable = [
-        'test_type', 'result_code', 'openid', 'session_id', 'answers_snapshot', 'is_paid', 'paid_at',
+        'test_type',
+        'result_code',
+        'openid',
+        'session_id',
+        'answers_snapshot',
+        'e_score', 'i_score', 's_score', 'n_score', 't_score', 'f_score', 'j_score', 'p_score',
+        'is_paid',
+        'paid_at',
     ];
 
     protected $casts = [

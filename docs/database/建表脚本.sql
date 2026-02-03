@@ -3,6 +3,10 @@
 -- 适用：MySQL 5.7+
 -- 字符集：utf8mb4
 -- 执行前请先创建数据库：CREATE DATABASE IF NOT EXISTS discover_strengths DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; USE discover_strengths;
+--
+-- 执行说明：
+--   新库：执行至 SET FOREIGN_KEY_CHECKS = 1 即可（建表已含全部字段）
+--   已有库升级：仅执行末尾「变更/迁移」部分的 ALTER 语句
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
@@ -17,6 +21,7 @@ CREATE TABLE `strengths_test_types` (
   `name` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '测试名称',
   `description` text COLLATE utf8mb4_unicode_ci COMMENT '测试说明',
   `total_questions` int(11) NOT NULL DEFAULT '0' COMMENT '总题数',
+  `estimate_minutes` int(11) DEFAULT NULL COMMENT '建议答题时长（分钟），用于 mbti/intro 说明页',
   `price` decimal(10,2) NOT NULL DEFAULT '8.88' COMMENT '单价（元），后台可配置；CSV 无此列时用默认值',
   `sort` int(11) NOT NULL DEFAULT '0' COMMENT '排序',
   `status` tinyint(4) NOT NULL DEFAULT '1' COMMENT '状态：1启用 0禁用',
@@ -165,6 +170,7 @@ CREATE TABLE `strengths_test_answer` (
   `strengths` text COLLATE utf8mb4_unicode_ci COMMENT '优势',
   `weaknesses` text COLLATE utf8mb4_unicode_ci COMMENT '劣势',
   `careers` text COLLATE utf8mb4_unicode_ci COMMENT '适合的职业',
+  `suggestion` text COLLATE utf8mb4_unicode_ci COMMENT '沟通与成长建议',
   `typical_figures` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '典型人物',
   `sort` int(11) NOT NULL DEFAULT '0' COMMENT '排序',
   `status` tinyint(4) NOT NULL DEFAULT '1' COMMENT '状态：1启用 0禁用',
@@ -187,6 +193,14 @@ CREATE TABLE `strengths_test_results_records` (
   `openid` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '微信 openid（防重复付费）',
   `session_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '匿名会话标识',
   `answers_snapshot` text COLLATE utf8mb4_unicode_ci COMMENT '答案快照（可选，存文本）',
+  `e_score` int(11) NOT NULL DEFAULT '0' COMMENT '外向(E)得分',
+  `i_score` int(11) NOT NULL DEFAULT '0' COMMENT '内向(I)得分',
+  `s_score` int(11) NOT NULL DEFAULT '0' COMMENT '实感(S)得分',
+  `n_score` int(11) NOT NULL DEFAULT '0' COMMENT '直觉(N)得分',
+  `t_score` int(11) NOT NULL DEFAULT '0' COMMENT '思考(T)得分',
+  `f_score` int(11) NOT NULL DEFAULT '0' COMMENT '情感(F)得分',
+  `j_score` int(11) NOT NULL DEFAULT '0' COMMENT '判断(J)得分',
+  `p_score` int(11) NOT NULL DEFAULT '0' COMMENT '知觉(P)得分',
   `is_paid` tinyint(4) NOT NULL DEFAULT '0' COMMENT '是否已付费：0否 1是',
   `paid_at` timestamp NULL DEFAULT NULL COMMENT '付费时间',
   `created_at` timestamp NULL DEFAULT NULL,
@@ -219,4 +233,44 @@ CREATE TABLE `strengths_orders` (
   KEY `strengths_orders_openid_index` (`openid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单';
 
+-- ----------------------------
+-- 11. 站点配置表（供 GET /config/site 使用）
+-- ----------------------------
+DROP TABLE IF EXISTS `strengths_site_config`;
+CREATE TABLE `strengths_site_config` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `stats_count` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT '0' COMMENT '测试总人次',
+  `stats_date` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '统计日期文案，如 2014年5月19日 ~ 至今',
+  `qrcode_wechat` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '公众号二维码图片 URL',
+  `qrcode_community` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '社群二维码图片 URL',
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='站点配置（首页 stats、二维码）';
+
+-- 站点配置初始数据（供 GET /config/site 使用）
+INSERT INTO `strengths_site_config` (`stats_count`, `stats_date`, `qrcode_wechat`, `qrcode_community`)
+VALUES ('0', '2014年5月19日 ~ 至今', NULL, NULL);
+
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- =============================================================================
+-- 变更/迁移：已有数据库升级用（新库请勿执行，建表已包含下述字段）
+-- =============================================================================
+
+-- 变更：strengths_test_types 添加 estimate_minutes
+-- ALTER TABLE `strengths_test_types` ADD COLUMN `estimate_minutes` int(11) DEFAULT NULL COMMENT '建议答题时长（分钟）' AFTER `total_questions`;
+
+-- 变更：strengths_test_answer 添加 suggestion
+-- ALTER TABLE `strengths_test_answer` ADD COLUMN `suggestion` text COLLATE utf8mb4_unicode_ci COMMENT '沟通与成长建议' AFTER `careers`;
+
+-- 变更：strengths_test_results_records 添加 8 个维度得分字段
+-- ALTER TABLE `strengths_test_results_records`
+--   ADD COLUMN `e_score` int(11) NOT NULL DEFAULT 0 COMMENT '外向(E)得分' AFTER `answers_snapshot`,
+--   ADD COLUMN `i_score` int(11) NOT NULL DEFAULT 0 COMMENT '内向(I)得分' AFTER `e_score`,
+--   ADD COLUMN `s_score` int(11) NOT NULL DEFAULT 0 COMMENT '实感(S)得分' AFTER `i_score`,
+--   ADD COLUMN `n_score` int(11) NOT NULL DEFAULT 0 COMMENT '直觉(N)得分' AFTER `s_score`,
+--   ADD COLUMN `t_score` int(11) NOT NULL DEFAULT 0 COMMENT '思考(T)得分' AFTER `n_score`,
+--   ADD COLUMN `f_score` int(11) NOT NULL DEFAULT 0 COMMENT '情感(F)得分' AFTER `t_score`,
+--   ADD COLUMN `j_score` int(11) NOT NULL DEFAULT 0 COMMENT '判断(J)得分' AFTER `f_score`,
+--   ADD COLUMN `p_score` int(11) NOT NULL DEFAULT 0 COMMENT '知觉(P)得分' AFTER `j_score`;

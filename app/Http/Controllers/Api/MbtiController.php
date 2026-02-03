@@ -8,6 +8,10 @@ use App\Models\StrengthsTestQuestionsSection;
 use App\Models\StrengthsTestResultsRecord;
 use App\Models\StrengthsTestAnswer;
 use App\Models\StrengthsTestType;
+use App\Models\StrengthsTestDimension;
+use App\Models\StrengthsTestDimensionSide;
+use App\Models\StrengthsSiteConfig;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 
 class MbtiController extends Controller
@@ -51,19 +55,23 @@ class MbtiController extends Controller
             return $row->section_code . '_' . $row->question_number;
         });
 
-        $dimensionMap = ['E' => 'EI', 'I' => 'EI', 'S' => 'SN', 'N' => 'SN', 'T' => 'TF', 'F' => 'TF', 'J' => 'JP', 'P' => 'JP'];
+        $dimensionMap = ['E' => 'E-I', 'I' => 'E-I', 'S' => 'S-N', 'N' => 'S-N', 'T' => 'T-F', 'F' => 'T-F', 'J' => 'J-P', 'P' => 'J-P'];
 
         $data = [];
         foreach ($questions as $q) {
             $key = $q->section_code . '_' . $q->question_number;
             $opts = $optionsByKey->get($key, collect());
             $options = $opts->map(function ($o) {
-                return ['key' => $o->option_key, 'text' => $o->option_text];
+                return [
+                    'key' => $o->option_key,
+                    'text' => $o->option_text,
+                    'side' => $o->dimension_side, // 每个选项对应八个面之一 E/I/S/N/T/F/J/P，与 strengths_test_question_options.dimension_side 一致
+                ];
             })->values()->toArray();
-            $dimension = 'EI';
+            $dimension = 'E-I';
             if ($opts->isNotEmpty()) {
                 $side = $opts->first()->dimension_side;
-                $dimension = $dimensionMap[$side] ?? 'EI';
+                $dimension = $dimensionMap[$side] ?? 'E-I';
             }
             $data[] = [
                 'id' => $q->id,
@@ -164,21 +172,29 @@ class MbtiController extends Controller
 
         $answersSnapshot = json_encode($answers, JSON_UNESCAPED_UNICODE);
 
+        $recordData = [
+            'result_code' => $resultCode,
+            'answers_snapshot' => $answersSnapshot,
+            'e_score' => $scores['E'],
+            'i_score' => $scores['I'],
+            's_score' => $scores['S'],
+            'n_score' => $scores['N'],
+            't_score' => $scores['T'],
+            'f_score' => $scores['F'],
+            'j_score' => $scores['J'],
+            'p_score' => $scores['P'],
+        ];
+
         if ($existing) {
-            $existing->update([
-                'result_code' => $resultCode,
-                'answers_snapshot' => $answersSnapshot,
-            ]);
+            $existing->update($recordData);
             $record = $existing;
         } else {
-            $record = StrengthsTestResultsRecord::create([
+            $record = StrengthsTestResultsRecord::create(array_merge($recordData, [
                 'test_type' => self::TEST_TYPE,
-                'result_code' => $resultCode,
                 'openid' => $openid ?: null,
                 'session_id' => $sessionId ?: null,
-                'answers_snapshot' => $answersSnapshot,
                 'is_paid' => 0,
-            ]);
+            ]));
         }
 
         $answerRow = StrengthsTestAnswer::query()
@@ -206,6 +222,7 @@ class MbtiController extends Controller
     /**
      * 报告详情（预览/完整）
      * GET /api/v1/mbti/report?result_id=xxx
+     * 已付费时返回完整结构化报告，格式严格按接口文档 4.2
      */
     public function report(Request $request)
     {
@@ -230,36 +247,241 @@ class MbtiController extends Controller
         }
 
         $isPaid = (int) $record->is_paid === 1;
-        $previewContent = $answerRow->summary ?? $answerRow->traits_summary ?? $answerRow->result_name ?? '';
-        $fullContent = null;
+        $fullParam = (string) $request->get('full', '');
+        $forceFull = ($fullParam === '1' || $fullParam === 'true'); // 测试环境：full=1 时未付费也返回完整报告
+
+        $summary = $answerRow->summary ?? $answerRow->result_name ?? '';
+        $previewContent = $summary ?: ($answerRow->traits_summary ?? $answerRow->result_name ?? '');
         $price = '8.88';
         $testType = StrengthsTestType::query()->where('code', self::TEST_TYPE)->first();
         if ($testType) {
             $price = (string) $testType->price;
         }
 
-        if ($isPaid) {
-            $fullContent = [
-                'summary' => $answerRow->summary,
-                'traits_summary' => $answerRow->traits_summary,
-                'traits' => $answerRow->traits,
-                'strengths' => $answerRow->strengths,
-                'weaknesses' => $answerRow->weaknesses,
-                'careers' => $answerRow->careers,
-                'typical_figures' => $answerRow->typical_figures,
-            ];
-        }
-
         $data = [
             'result_id' => $record->id,
             'result_code' => $record->result_code,
             'result_name' => $answerRow->result_name,
-            'preview_content' => $previewContent,
-            'full_content' => $fullContent,
+            'summary' => $summary,
             'is_paid' => $isPaid,
             'price' => $price,
+            'preview_content' => $previewContent,
         ];
 
-        return $this->success($data);
+        if ($isPaid || $forceFull) {
+            $data = array_merge($data, $this->buildFullReportData($record, $answerRow));
+        }
+
+        return response()->json([
+            'code' => 200,
+            'msg' => 'success',
+            'data' => $data,
+        ], 200, [], JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * 报告 PDF 下载
+     * GET /api/v1/mbti/report/pdf?result_id=xxx
+     * 已付费：返回 PDF 文件流；未付费：返回 403
+     */
+    public function reportPdf(Request $request)
+    {
+        $resultId = (int) $request->get('result_id');
+        if (!$resultId) {
+            return $this->error('10004', '缺少 result_id');
+        }
+
+        $record = StrengthsTestResultsRecord::query()->find($resultId);
+        if (!$record || $record->test_type !== self::TEST_TYPE) {
+            return $this->error('10005', '测试记录不存在');
+        }
+
+        if ((int) $record->is_paid !== 1) {
+            return response()->json(['code' => 403, 'msg' => '请先付费解锁完整报告'], 403);
+        }
+
+        $answerRow = StrengthsTestAnswer::query()
+            ->where('test_type', self::TEST_TYPE)
+            ->where('result_code', $record->result_code)
+            ->where('status', 1)
+            ->first();
+
+        if (!$answerRow) {
+            return $this->error('10006', '报告内容不存在');
+        }
+
+        $fullData = $this->buildFullReportData($record, $answerRow);
+        $data = [
+            'result_code' => $record->result_code,
+            'result_name' => $answerRow->result_name,
+            'summary' => $answerRow->summary ?? $answerRow->result_name ?? '',
+            'traits_summary' => $fullData['traits_summary'] ?? '',
+            'traits' => $fullData['traits'] ?? '',
+            'strengths' => $fullData['strengths'] ?? [],
+            'weaknesses' => $fullData['weaknesses'] ?? [],
+            'careers' => $fullData['careers'] ?? '',
+            'suggestion' => $fullData['suggestion'] ?? '',
+            'typical_figures' => is_array($fullData['typical_figures'] ?? null) ? implode('、', $fullData['typical_figures']) : ($fullData['typical_figures'] ?? ''),
+        ];
+
+        $filename = 'MBTI_' . $record->result_code . '_' . date('Ymd') . '.pdf';
+        $pdf = Pdf::loadView('mbti.report-pdf', $data);
+        $pdf->setPaper('A4', 'portrait');
+
+        return $pdf->download($filename);
+    }
+
+    /**
+     * 构建已付费完整报告数据
+     */
+    protected function buildFullReportData(StrengthsTestResultsRecord $record, StrengthsTestAnswer $answerRow): array
+    {
+        $dimensionOrder = ['E-I', 'S-N', 'T-F', 'J-P'];
+        $scoreMap = [
+            'E-I' => ['left' => 'e_score', 'right' => 'i_score', 'leftCode' => 'E', 'rightCode' => 'I'],
+            'S-N' => ['left' => 's_score', 'right' => 'n_score', 'leftCode' => 'S', 'rightCode' => 'N'],
+            'T-F' => ['left' => 't_score', 'right' => 'f_score', 'leftCode' => 'T', 'rightCode' => 'F'],
+            'J-P' => ['left' => 'j_score', 'right' => 'p_score', 'leftCode' => 'J', 'rightCode' => 'P'],
+        ];
+
+        $sideOrder = ['E', 'I', 'S', 'N', 'T', 'F', 'J', 'P'];
+        $sidesRaw = StrengthsTestDimensionSide::query()
+            ->where('test_type', self::TEST_TYPE)
+            ->get()
+            ->keyBy('side_code');
+        $dimensionSides = [];
+        foreach ($sideOrder as $code) {
+            $s = $sidesRaw->get($code);
+            if ($s) {
+                $dimensionSides[] = ['side_code' => $s->side_code, 'side_name' => $s->side_name];
+            }
+        }
+
+        $dimensions = StrengthsTestDimension::query()
+            ->where('test_type', self::TEST_TYPE)
+            ->whereIn('dimension_code', $dimensionOrder)
+            ->orderByRaw("FIELD(dimension_code, 'E-I', 'S-N', 'T-F', 'J-P')")
+            ->get()
+            ->map(fn ($d) => ['dimension_code' => $d->dimension_code, 'dimension_scope' => $d->dimension_scope ?? ''])
+            ->toArray();
+
+        $dimensionScores = [];
+        foreach ($dimensionOrder as $dimCode) {
+            $cfg = $scoreMap[$dimCode];
+            $leftVal = (int) ($record->{$cfg['left']} ?? 0);
+            $rightVal = (int) ($record->{$cfg['right']} ?? 0);
+            $total = $leftVal + $rightVal;
+            if ($total > 0) {
+                $leftPct = round($leftVal / $total * 100, 2);
+                $rightPct = round($rightVal / $total * 100, 2);
+            } else {
+                $leftPct = 50;
+                $rightPct = 50;
+            }
+            $dimensionScores[] = [
+                'dimension_code' => $dimCode,
+                'leftCode' => $cfg['leftCode'],
+                'rightCode' => $cfg['rightCode'],
+                'leftScore' => $leftPct,
+                'rightScore' => $rightPct,
+            ];
+        }
+
+        $sidesByDimension = StrengthsTestDimensionSide::query()
+            ->where('test_type', self::TEST_TYPE)
+            ->get()
+            ->groupBy('dimension_code');
+
+        $dimensionsDetail = [];
+        foreach ($dimensionOrder as $dimCode) {
+            $cfg = $scoreMap[$dimCode];
+            $leftVal = (int) ($record->{$cfg['left']} ?? 0);
+            $rightVal = (int) ($record->{$cfg['right']} ?? 0);
+            $total = $leftVal + $rightVal;
+            if ($total > 0) {
+                $leftPct = round($leftVal / $total * 100, 1);
+                $rightPct = round($rightVal / $total * 100, 1);
+            } else {
+                $leftPct = 50;
+                $rightPct = 50;
+            }
+
+            $sides = $sidesByDimension->get($dimCode, collect());
+            $leftSide = $sides->firstWhere('side_code', $cfg['leftCode']);
+            $rightSide = $sides->firstWhere('side_code', $cfg['rightCode']);
+
+            $dim = StrengthsTestDimension::query()
+                ->where('test_type', self::TEST_TYPE)
+                ->where('dimension_code', $dimCode)
+                ->first();
+
+            $dimensionsDetail[] = [
+                'title' => $dim ? ($dim->dimension_scope ?? '') : '',
+                'leftCode' => $cfg['leftCode'],
+                'rightCode' => $cfg['rightCode'],
+                'leftScore' => $leftPct,
+                'rightScore' => $rightPct,
+                'leftName' => $leftSide ? ($leftSide->side_name ?? '') : '',
+                'rightName' => $rightSide ? ($rightSide->side_name ?? '') : '',
+                'leftDesc' => $leftSide ? ($leftSide->overview ?? '') : '',
+                'rightDesc' => $rightSide ? ($rightSide->overview ?? '') : '',
+                'leftOverview' => $leftSide ? ($leftSide->overview ?? '') : '',
+                'rightOverview' => $rightSide ? ($rightSide->overview ?? '') : '',
+                'leftFeatures' => $leftSide ? ($leftSide->features ?? '') : '',
+                'rightFeatures' => $rightSide ? ($rightSide->features ?? '') : '',
+                'leftKeywords' => $leftSide ? ($leftSide->keywords ?? '') : '',
+                'rightKeywords' => $rightSide ? ($rightSide->keywords ?? '') : '',
+                'leftExpression' => $leftSide ? ($leftSide->expression ?? '') : '',
+                'rightExpression' => $rightSide ? ($rightSide->expression ?? '') : '',
+                'leftMantra' => $leftSide ? ($leftSide->mantra ?? '') : '',
+                'rightMantra' => $rightSide ? ($rightSide->mantra ?? '') : '',
+            ];
+        }
+
+        $strengths = $this->parseTextToArray($answerRow->strengths ?? '');
+        $weaknesses = $this->parseTextToArray($answerRow->weaknesses ?? '');
+        $typicalFigures = $answerRow->typical_figures ?? '';
+        $typicalFiguresArr = $this->parseTextToArray($typicalFigures);
+
+        $result = [
+            'dimension_scores' => $dimensionScores,
+            'dimension_sides' => $dimensionSides,
+            'dimensions' => $dimensions,
+            'dimensions_detail' => $dimensionsDetail,
+            'traits_summary' => $answerRow->traits_summary ?? '',
+            'traits' => $answerRow->traits ?? '',
+            'style_intro' => $answerRow->traits_summary ?? '',
+            'typical_figures' => $typicalFiguresArr ?: $typicalFigures,
+            'typical_characters' => $typicalFiguresArr ?: $typicalFigures,
+            'strengths' => $strengths,
+            'weaknesses' => $weaknesses,
+            'careers' => $answerRow->careers ?? '',
+            'overview' => $answerRow->summary ?? $answerRow->traits ?? '',
+            'suggestion' => $answerRow->suggestion ?? '',
+        ];
+
+        $siteConfig = StrengthsSiteConfig::query()->first();
+        if ($siteConfig) {
+            if ($siteConfig->qrcode_wechat) {
+                $result['qrcode_wechat'] = (string) $siteConfig->qrcode_wechat;
+            }
+            if ($siteConfig->qrcode_community) {
+                $result['qrcode_community'] = (string) $siteConfig->qrcode_community;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * 将文本解析为数组（支持换行、顿号、逗号等分隔）
+     */
+    protected function parseTextToArray(?string $text): array
+    {
+        if (empty(trim((string) $text))) {
+            return [];
+        }
+        $items = preg_split('/[\n\r、,，;；]+/u', $text, -1, PREG_SPLIT_NO_EMPTY);
+        return array_values(array_map('trim', array_filter($items)));
     }
 }

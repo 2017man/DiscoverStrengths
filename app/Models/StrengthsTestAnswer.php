@@ -10,7 +10,7 @@ class StrengthsTestAnswer extends Model
 
     protected $fillable = [
         'test_type', 'result_code', 'result_name', 'summary', 'traits_summary', 'traits',
-        'strengths', 'weaknesses', 'careers', 'typical_figures', 'sort', 'status',
+        'strengths', 'weaknesses', 'careers', 'suggestion', 'typical_figures', 'sort', 'status',
     ];
 
     protected $casts = [

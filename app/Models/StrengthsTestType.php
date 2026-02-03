@@ -9,7 +9,7 @@ class StrengthsTestType extends Model
     protected $table = 'strengths_test_types';
 
     protected $fillable = [
-        'code', 'name', 'description', 'total_questions', 'price', 'sort', 'status',
+        'code', 'name', 'description', 'total_questions', 'estimate_minutes', 'price', 'sort', 'status',
     ];
 
     protected $casts = [
