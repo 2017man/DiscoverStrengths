@@ -11,8 +11,8 @@ use App\Models\StrengthsTestType;
 use App\Models\StrengthsTestDimension;
 use App\Models\StrengthsTestDimensionSide;
 use App\Models\StrengthsSiteConfig;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Spatie\Browsershot\Browsershot;
 
 class MbtiController extends Controller
 {
@@ -283,6 +283,7 @@ class MbtiController extends Controller
      * 报告 PDF 下载
      * GET /api/v1/mbti/report/pdf?result_id=xxx
      * 已付费：返回 PDF 文件流；未付费：返回 403
+     * 测试环境：full=1 时未付费也可下载（便于联调）
      */
     public function reportPdf(Request $request)
     {
@@ -296,7 +297,8 @@ class MbtiController extends Controller
             return $this->error('10005', '测试记录不存在');
         }
 
-        if ((int) $record->is_paid !== 1) {
+        $forceFull = in_array($request->get('full'), ['1', 'true'], true);
+        if ((int) $record->is_paid !== 1 && !$forceFull) {
             return response()->json(['code' => 403, 'msg' => '请先付费解锁完整报告'], 403);
         }
 
@@ -325,10 +327,23 @@ class MbtiController extends Controller
         ];
 
         $filename = 'MBTI_' . $record->result_code . '_' . date('Ymd') . '.pdf';
-        $pdf = Pdf::loadView('mbti.report-pdf', $data);
-        $pdf->setPaper('A4', 'portrait');
 
-        return $pdf->download($filename);
+        try {
+            $html = view('mbti.report-pdf', $data)->render();
+            $pdf = Browsershot::html($html)
+                ->format('A4')
+                ->margins(10, 10, 10, 10)
+                ->showBackground()
+                ->pdf();
+
+            return response($pdf, 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('PDF download failed', ['result_id' => $resultId, 'error' => $e->getMessage()]);
+            return response()->json(['code' => 500, 'msg' => 'PDF 生成失败：' . $e->getMessage()], 500);
+        }
     }
 
     /**

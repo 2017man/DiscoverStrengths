@@ -11,7 +11,7 @@ return [
     | login page.
     |
     */
-    'name' => '信息收集管理',
+    'name' => '发现你的优势',
 
     /*
     |--------------------------------------------------------------------------
@@ -22,7 +22,7 @@ return [
     | `img` tag, eg '<img src="http://logo-url" alt="Admin logo">'.
     |
     */
-    'logo' => '<img src="/vendor/dcat-admin/images/logo.png" width="35"> &nbsp;信息收集管理',
+    'logo' => '<img src="/vendor/dcat-admin/images/logo.png" width="35"> &nbsp;发现你的优势',
 
     /*
     |--------------------------------------------------------------------------

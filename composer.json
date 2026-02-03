@@ -18,7 +18,8 @@
         "laravel/framework": "^6.20.26",
         "laravel/tinker": "^2.5",
         "maatwebsite/excel": "^3.1",
-        "php-open-source-saver/jwt-auth": "^2.0"
+        "php-open-source-saver/jwt-auth": "^2.0",
+        "spatie/browsershot": "^3.58"
     },
     "require-dev": {
         "facade/ignition": "^1.16.15",
