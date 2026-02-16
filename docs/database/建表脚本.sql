@@ -218,6 +218,7 @@ DROP TABLE IF EXISTS `strengths_orders`;
 CREATE TABLE `strengths_orders` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `out_trade_no` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '商户订单号',
+  `epay_order_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '易支付云端订单号，用于 getOrder/checkOrder',
   `test_result_id` bigint(20) unsigned NOT NULL COMMENT '关联 strengths_test_results_records.id',
   `test_type` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '测试类型代码',
   `openid` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '微信 openid',

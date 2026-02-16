@@ -79,6 +79,9 @@ class OrderController extends Controller
                 $result = $epay->createOrder($outTradeNo, $amount, $goodsName, $param, $returnUrl ?: null);
                 if ($result['success'] && $result['pay_url'] !== '') {
                     $payUrl = $result['pay_url'];
+                    if (!empty($result['order_id'])) {
+                        $order->update(['epay_order_id' => $result['order_id']]);
+                    }
                 }
             }
             if ($payUrl === '') {
@@ -92,11 +95,87 @@ class OrderController extends Controller
             'pay_url' => $payUrl,
             'out_trade_no' => $outTradeNo,
         ];
+        if (!empty($order->epay_order_id)) {
+            $data['epay_order_id'] = $order->epay_order_id; // 用于前端轮询 checkOrder 或后端查询
+        }
         if ($skipPaymentForTest) {
             $data['skip_payment'] = true; // 前端可据此直接跳转报告页或提示「测试模式已免支付」
         }
 
         return $this->success($data);
+    }
+
+    /**
+     * 查询支付状态（轮询易支付 checkOrder）
+     * GET /api/v1/order/check-payment?out_trade_no=xxx
+     * 返回：paid(true/false)、state(1=已支付 0=等待 -2=未支付 -3=已过期)、message
+     */
+    public function checkPayment(Request $request)
+    {
+        $outTradeNo = $request->get('out_trade_no', '');
+        if ($outTradeNo === '') {
+            return $this->error('10011', '缺少 out_trade_no');
+        }
+
+        $order = StrengthsOrder::query()->where('out_trade_no', $outTradeNo)->first();
+        if (!$order) {
+            return $this->error('10012', '订单不存在');
+        }
+        if ($order->status === 'paid') {
+            return $this->success([
+                'out_trade_no' => $outTradeNo,
+                'paid' => true,
+                'state' => 1,
+                'message' => '已支付',
+            ]);
+        }
+
+        $epayOrderId = $order->epay_order_id;
+        if ($epayOrderId === '' || $epayOrderId === null) {
+            return $this->success([
+                'out_trade_no' => $outTradeNo,
+                'paid' => false,
+                'state' => 0,
+                'message' => '订单未关联易支付，请稍后或联系客服',
+            ]);
+        }
+
+        $epay = new EpayService();
+        if (!$epay->isEnabled()) {
+            return $this->success([
+                'out_trade_no' => $outTradeNo,
+                'paid' => false,
+                'state' => 0,
+                'message' => '易支付未配置，仅以本地状态为准',
+            ]);
+        }
+
+        $result = $epay->checkOrder($epayOrderId);
+        if (!$result['success']) {
+            return $this->success([
+                'out_trade_no' => $outTradeNo,
+                'paid' => false,
+                'state' => 0,
+                'message' => $result['message'] ?? '查询失败',
+            ]);
+        }
+
+        $state = $result['code'];
+        $paid = $result['paid'];
+        if ($paid && $order->status !== 'paid') {
+            $order->update(['status' => 'paid', 'paid_at' => now()]);
+            $record = StrengthsTestResultsRecord::query()->find($order->test_result_id);
+            if ($record) {
+                $record->update(['is_paid' => 1, 'paid_at' => now()]);
+            }
+        }
+
+        return $this->success([
+            'out_trade_no' => $outTradeNo,
+            'paid' => $paid,
+            'state' => $state,
+            'message' => $result['message'] ?: ($paid ? '已支付' : '未支付'),
+        ]);
     }
 
     /**

@@ -31,6 +31,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::get('mbti/report/pdf', [\App\Http\Controllers\Api\MbtiController::class, 'reportPdf'])->name('mbti.report.pdf');
     Route::post('order/create', [\App\Http\Controllers\Api\OrderController::class, 'create'])->name('order.create');
     Route::get('order/status', [\App\Http\Controllers\Api\OrderController::class, 'status'])->name('order.status');
+    Route::get('order/check-payment', [\App\Http\Controllers\Api\OrderController::class, 'checkPayment'])->name('order.check_payment');
 
     /**
      * 支付回调（易支付异步通知，文档为 GET 请求，不校验登录）

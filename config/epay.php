@@ -21,6 +21,12 @@ return [
     // 创建订单接口地址（文档示例：https://epay.jylt.cc/api/createOrder）
     'api_create_order' => rtrim(env('EPAY_API_CREATE_ORDER', ''), '/'),
 
+    // 查询订单信息接口（可选，不填则从 api_create_order 派生：同域名 /api/getOrder）
+    'api_get_order' => rtrim(env('EPAY_API_GET_ORDER', ''), '/'),
+
+    // 查询订单状态接口（可选，不填则从 api_create_order 派生：同域名 /api/checkOrder）
+    'api_check_order' => rtrim(env('EPAY_API_CHECK_ORDER', ''), '/'),
+
     // 异步通知地址（支付成功后易支付 GET 到此地址，须公网可访问）
     'notify_url' => env('EPAY_NOTIFY_URL', ''),
 

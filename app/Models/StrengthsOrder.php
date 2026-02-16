@@ -9,7 +9,7 @@ class StrengthsOrder extends Model
     protected $table = 'strengths_orders';
 
     protected $fillable = [
-        'out_trade_no', 'test_result_id', 'test_type', 'openid', 'amount', 'status', 'pay_channel', 'paid_at',
+        'out_trade_no', 'epay_order_id', 'test_result_id', 'test_type', 'openid', 'amount', 'status', 'pay_channel', 'paid_at',
     ];
 
     protected $casts = [

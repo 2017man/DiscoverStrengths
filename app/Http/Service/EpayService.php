@@ -135,6 +135,88 @@ class EpayService
     }
 
     /**
+     * 获取易支付「查询订单」接口 URL（从 api_create_order 派生）
+     */
+    protected function getApiGetOrderUrl(): string
+    {
+        $url = $this->config['api_get_order'] ?? '';
+        if ($url !== '') {
+            return $url;
+        }
+        $create = $this->config['api_create_order'] ?? '';
+        return preg_replace('#/api/createOrder$#i', '/api/getOrder', $create);
+    }
+
+    /**
+     * 获取易支付「查询订单状态」接口 URL（从 api_create_order 派生）
+     */
+    protected function getApiCheckOrderUrl(): string
+    {
+        $url = $this->config['api_check_order'] ?? '';
+        if ($url !== '') {
+            return $url;
+        }
+        $create = $this->config['api_create_order'] ?? '';
+        return preg_replace('#/api/createOrder$#i', '/api/checkOrder', $create);
+    }
+
+    /**
+     * 查询订单信息（易支付 getOrder）
+     * 文档：GET/POST 参数 orderId、mchId，返回订单详情
+     */
+    public function getOrder(string $orderId): array
+    {
+        $apiUrl = $this->getApiGetOrderUrl();
+        $params = [
+            'orderId' => $orderId,
+            'mchId' => (string) $this->config['mch_id'],
+        ];
+        try {
+            $client = new Client(['timeout' => 8]);
+            $response = $client->get($apiUrl, ['query' => $params]);
+            $body = json_decode((string) $response->getBody(), true) ?? [];
+        } catch (\Throwable $e) {
+            Log::warning('Epay getOrder request failed', ['message' => $e->getMessage()]);
+            return ['success' => false, 'data' => null, 'message' => '查询失败'];
+        }
+        $code = $body['code'] ?? -1;
+        if ((int) $code !== 1) {
+            return ['success' => false, 'data' => null, 'message' => $body['msg'] ?? '查询失败'];
+        }
+        return ['success' => true, 'data' => $body['data'] ?? null];
+    }
+
+    /**
+     * 查询订单状态（易支付 checkOrder）
+     * 文档：GET/POST 参数 orderId、mchId；code 1=已支付 -1=失败 -2=未支付 -3=已过期
+     */
+    public function checkOrder(string $orderId): array
+    {
+        $apiUrl = $this->getApiCheckOrderUrl();
+        $params = [
+            'orderId' => $orderId,
+            'mchId' => (string) $this->config['mch_id'],
+        ];
+        try {
+            $client = new Client(['timeout' => 8]);
+            $response = $client->get($apiUrl, ['query' => $params]);
+            $body = json_decode((string) $response->getBody(), true) ?? [];
+        } catch (\Throwable $e) {
+            Log::warning('Epay checkOrder request failed', ['message' => $e->getMessage()]);
+            return ['success' => false, 'code' => null, 'paid' => false, 'message' => '查询失败'];
+        }
+        $code = (int) ($body['code'] ?? -1);
+        $paid = $code === 1;
+        return [
+            'success' => true,
+            'code' => $code,
+            'paid' => $paid,
+            'data' => $body['data'] ?? null,
+            'message' => $body['msg'] ?? '',
+        ];
+    }
+
+    /**
      * 处理异步通知（GET 请求）
      * 文档：易支付向异步通知地址发送 GET 请求，参数 mchId, payId, orderId, param, type, price, reallyPrice, sign
      * 需返回字符串 "success"
